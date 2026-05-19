@@ -1,0 +1,5 @@
+/* Meridian — global resets (most styles are in App.jsx CSS string) */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100dvh; }
+body { height: 100dvh; overflow: hidden; background: #0B0C0E; }
+#root { height: 100dvh; }
