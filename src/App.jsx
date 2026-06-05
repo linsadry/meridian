@@ -376,10 +376,10 @@ const CSS = `
   .tipo-title { font-size:14px; font-weight:500; color:var(--text); margin-bottom:2px; }
   .tipo-sub { font-size:11px; color:var(--text3); font-weight:300; }
   .clin-list { display:flex; flex-direction:column; gap:6px; }
-  .clin-opt { background:var(--bg2); border:1px solid var(--border); border-radius:var(--r); padding:13px 16px; cursor:pointer; font-family:var(--font); display:flex; align-items:center; gap:12px; transition:all 0.18s; }
+  .clin-opt { background:var(--bg3); border:1px solid var(--border); border-radius:var(--r); padding:13px 16px; cursor:pointer; font-family:var(--font); display:flex; align-items:center; gap:12px; transition:all 0.18s; }
   .clin-opt.sel { border-color:rgba(126,155,138,0.3); background:rgba(126,155,138,0.06); }
-  .clin-nome { font-size:14px; font-weight:400; }
-  .clin-cidade { font-size:11px; color:var(--text3); font-weight:300; margin-top:1px; }
+  .clin-nome { font-size:15px; font-weight:500; color:var(--text); }
+  .clin-cidade { font-size:11px; color:var(--text2); font-weight:300; margin-top:2px; }
   .clin-vtag { margin-left:auto; font-size:10px; color:var(--amber); background:var(--amber2); border-radius:100px; padding:3px 8px; }
 
   /* Idle day */
