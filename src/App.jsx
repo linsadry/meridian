@@ -73,8 +73,12 @@ const LOCAIS_CALC   = ["Clínica privada","SUS / Glaucoma","Plantão","Consultó
 
 const fmtDur = (ms) => {
   if (!ms || ms <= 0) return "—";
-  const m = Math.floor(ms / 60000), h = Math.floor(m / 60), min = m % 60;
-  return h === 0 ? `${m}m` : `${h}h${min > 0 ? String(min).padStart(2,"0") : ""}`;
+  const totalMin = Math.floor(ms / 60000);
+  const dias = Math.floor(totalMin / 1440);
+  const h    = Math.floor((totalMin % 1440) / 60);
+  const min  = totalMin % 60;
+  if (dias > 0) return `${dias}d${h > 0 ? ` ${h}h` : ""}`;
+  return h === 0 ? `${min}m` : `${h}h${min > 0 ? String(min).padStart(2,"0") : ""}`;
 };
 const fmtTime  = (ts) => ts ? new Date(ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—";
 const fmtDate  = (ts) => {
@@ -2052,7 +2056,7 @@ const TelaAnalytics = ({ historico, clinicas }) => {
   const byC = clinicas.map(c => {
     const ct = ts.filter(t => t.clinicaId===c.id);
     if (!ct.length) return null;
-    const totalFora = ct.reduce((a,t)=>a+(t.chegadaCasa?t.chegadaCasa-t.saidaCasa:0),0);
+    const totalFora = ct.reduce((a,t)=>a+(t.chegadaCasa&&t.saidaCasa&&t.chegadaCasa>t.saidaCasa?t.chegadaCasa-t.saidaCasa:0),0);
     const avgDg  = ct.reduce((a,t)=>a+calcDesgasteVal(t),0)/ct.length;
     const prods  = ct.filter(t=>calcProd(t)!==null);
     const avgProd = prods.length ? Math.round(prods.reduce((a,t)=>a+calcProd(t),0)/prods.length) : null;
@@ -2061,8 +2065,12 @@ const TelaAnalytics = ({ historico, clinicas }) => {
 
   const maxFora = byC[0]?.totalFora || 1;
   const totalAtend    = ts.reduce((a,t)=>a+(t.atendimentoFim&&t.atendimentoInicio?t.atendimentoFim-t.atendimentoInicio:0),0);
-  const totalFora     = ts.reduce((a,t)=>a+(t.chegadaCasa?t.chegadaCasa-t.saidaCasa:0),0);
-  const totalTransito = ts.reduce((a,t)=>{const i=t.chegadaClinica?t.chegadaClinica-t.saidaCasa:0;const v=t.chegadaCasa&&t.atendimentoFim?t.chegadaCasa-t.atendimentoFim:0;return a+i+v;},0);
+  const totalFora     = ts.reduce((a,t)=>a+(t.chegadaCasa&&t.saidaCasa&&t.chegadaCasa>t.saidaCasa?t.chegadaCasa-t.saidaCasa:0),0);
+  const totalTransito = ts.reduce((a,t)=>{
+    const i = (t.chegadaClinica && t.saidaCasa && t.chegadaClinica > t.saidaCasa) ? t.chegadaClinica - t.saidaCasa : 0;
+    const v = (t.chegadaCasa && t.atendimentoFim && t.chegadaCasa > t.atendimentoFim) ? t.chegadaCasa - t.atendimentoFim : 0;
+    return a + i + v;
+  }, 0);
   const tPct = totalFora>0 ? Math.round((totalTransito/totalFora)*100) : 0;
   const totalOciosos = ts.filter(t=>t.missao?.diasOciosos>0).reduce((a,t)=>a+(t.missao?.diasOciosos||0),0);
 
@@ -2300,7 +2308,7 @@ const TelaSemana = ({ historico, clinicas }) => {
   const getDT  = (d) => historico.filter(t=>{const td=new Date(t.saidaCasa);return td.getDate()===d.getDate()&&td.getMonth()===d.getMonth()&&td.getFullYear()===d.getFullYear();});
   const maxH   = 10*3600000;
   const semT   = semana.flatMap(d=>getDT(d));
-  const totalFora  = semT.reduce((a,t)=>a+(t.chegadaCasa?t.chegadaCasa-t.saidaCasa:0),0);
+  const totalFora  = semT.reduce((a,t)=>a+(t.chegadaCasa&&t.saidaCasa&&t.chegadaCasa>t.saidaCasa?t.chegadaCasa-t.saidaCasa:0),0);
   const totalAtend = semT.reduce((a,t)=>a+(t.atendimentoFim&&t.atendimentoInicio?t.atendimentoFim-t.atendimentoInicio:0),0);
   const score  = calcMeridianScore(semT.length>0?semT:historico.slice(0,7));
   const {l:sl,cor:sc} = getMeridianLabel(score);
