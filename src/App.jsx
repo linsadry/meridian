@@ -502,6 +502,72 @@ const CSS = `
   .sync-badge { display:inline-flex; align-items:center; gap:5px; font-size:10px; color:var(--text3); font-weight:300; }
   .sync-dot { width:5px; height:5px; border-radius:50%; }
 
+  /* ── LIVE WIDGET ── */
+  .live-widget {
+    background:rgba(11,12,14,0.97);
+    border-bottom:1px solid var(--border);
+    backdrop-filter:blur(20px);
+    overflow:hidden;
+    animation:lwIn 0.3s cubic-bezier(0,0,0.2,1) both;
+  }
+  @keyframes lwIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+  .lw-inner {
+    max-width:var(--max);
+    margin:0 auto;
+    padding:8px 16px 10px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+  @media (min-width:601px) { .lw-inner { padding:8px 24px 10px; } }
+  .lw-clin {
+    display:flex; align-items:center; gap:6px;
+    font-size:12px; font-weight:500; color:var(--text2);
+    flex-shrink:0;
+    min-width:0;
+  }
+  .lw-steps {
+    display:flex; align-items:center; gap:0;
+    flex:1; min-width:0;
+  }
+  .lw-step {
+    display:flex; align-items:center; gap:4px;
+    flex:1; min-width:0;
+  }
+  .lw-step-ico {
+    width:20px; height:20px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+    transition:all 0.3s;
+  }
+  .lw-step-ico.done  { background:rgba(126,155,138,0.18); }
+  .lw-step-ico.cur   { background:rgba(126,155,138,0.12); box-shadow:0 0 0 2px rgba(126,155,138,0.25); }
+  .lw-step-ico.pend  { background:var(--bg4); }
+  .lw-step-lbl {
+    font-size:9.5px; color:var(--text3); font-weight:300;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    line-height:1.2;
+    display:none;
+  }
+  .lw-step.cur .lw-step-lbl { display:block; color:var(--sage); }
+  .lw-connector {
+    width:16px; height:1px; background:var(--border); flex-shrink:0;
+    transition:background 0.4s;
+  }
+  .lw-connector.done { background:rgba(126,155,138,0.4); }
+  .lw-timer {
+    font-family:var(--font-d); font-size:14px; color:var(--text2);
+    font-style:italic; flex-shrink:0; letter-spacing:-0.5px;
+  }
+  .lw-timer.paused { color:var(--amber); }
+  .lw-goto {
+    flex-shrink:0; background:none; border:1px solid var(--border);
+    border-radius:8px; padding:4px 10px; font-family:var(--font);
+    font-size:10px; color:var(--text3); cursor:pointer;
+    transition:all 0.18s; white-space:nowrap;
+  }
+  .lw-goto:hover { color:var(--text); border-color:rgba(255,255,255,0.15); }
+
   /* ── EMPTY ── */
   .empty { display:flex; flex-direction:column; align-items:center; padding:60px 32px; text-align:center; color:var(--text3); gap:10px; }
   .empty-title { font-family:var(--font-d); font-size:20px; color:var(--text2); }
@@ -588,6 +654,92 @@ const mockHistorico = () => {
 };
 
 // ─── COMPONENTS ──────────────────────────────────────────────────────────────
+
+// ── Live Widget (barra persistente de turno ativo) ────────────
+
+const LiveWidget = ({ turno, clinicas, missoes = [], onGoToTurno }) => {
+  const clinica = getClinicaById(turno.clinicaId, clinicas);
+  const missao  = turno.missaoId ? missoes.find(m => m.id === turno.missaoId) : null;
+
+  // Fases adaptadas (igual ao TurnoAtivo)
+  const isMissao   = !!missao;
+  const diaAtual   = turno.diaMissao || 1;
+  const isUltimoDia = !isMissao || missao.noites === 0 || diaAtual > missao.noites;
+  const fases = useMemo(() => {
+    if (!isMissao) return FASES;
+    const base = [
+      ...(diaAtual === 1
+        ? [{ key:"chegadaClinica", icon:"plane",    label:"Destino" }]
+        : [{ key:"chegadaClinica", icon:"building", label:"Clínica" }]),
+      { key:"atendimentoInicio", icon:"steth",  label:"Atendendo" },
+      { key:"atendimentoFim",    icon:"check",  label:"Encerrado" },
+    ];
+    if (isUltimoDia) base.push({ key:"chegadaCasa", icon:"home", label:"Em casa" });
+    return base;
+  }, [isMissao, diaAtual, isUltimoDia]);
+
+  const faseIdx    = fases.findIndex(f => !turno[f.key]);
+  const pausas     = turno.pausas || [];
+  const pausaAtiva = pausas.find(p => !p.fim);
+
+  // Timer a partir da referência mais antiga disponível
+  const timerBase = turno.saidaCasa || turno.chegadaClinica || turno.atendimentoInicio;
+  const dur = useDuration(timerBase);
+
+  return (
+    <div className="live-widget">
+      <div className="lw-inner">
+        {/* Clínica */}
+        <div className="lw-clin">
+          <div className="cdot" style={{ width:6, height:6, background:clinica.cor, flexShrink:0 }} />
+          <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:64 }}>{clinica.nome}</span>
+        </div>
+
+        {/* Etapas */}
+        <div className="lw-steps">
+          {fases.map((f, i) => {
+            const done = !!turno[f.key];
+            const cur  = i === faseIdx && !pausaAtiva;
+            const paused = i === faseIdx && !!pausaAtiva;
+            const estado = done ? "done" : cur || paused ? "cur" : "pend";
+            return (
+              <div key={f.key} className="lw-step" style={cur||paused?{flex:"0 0 auto"}:{}}>
+                <div className={`lw-step-ico ${estado}`} style={paused?{boxShadow:"0 0 0 2px rgba(160,140,96,0.3)"}:{}}>
+                  {done
+                    ? <Icon d={ICONS.check} size={10} stroke={2.5} color="var(--sage)" />
+                    : paused
+                      ? <Icon d={ICONS.pause} size={10} stroke={2} color="var(--amber)" />
+                      : cur
+                        ? <div style={{ width:5, height:5, borderRadius:"50%", background:"var(--sage)", animation:"pd 2s ease infinite" }} />
+                        : <div style={{ width:4, height:4, borderRadius:"50%", background:"var(--bg5)" }} />
+                  }
+                </div>
+                {(cur || paused) && (
+                  <span className="lw-step-lbl" style={paused?{color:"var(--amber)"}:{}}>
+                    {paused ? "Pausado" : f.label}
+                  </span>
+                )}
+                {i < fases.length - 1 && (
+                  <div className={`lw-connector${done?" done":""}`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Timer */}
+        <div className={`lw-timer${pausaAtiva?" paused":""}`}>
+          {fmtDur(dur)}
+        </div>
+
+        {/* Botão ir para turno */}
+        <button className="lw-goto" onClick={onGoToTurno}>
+          Ver turno
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const SyncBadge = ({ saving, pending = 0, syncError = false }) => (
   <div className="sync-badge">
@@ -1407,6 +1559,111 @@ const fmtDatetimeLocal = (ts) => {
 };
 const parseDatetimeLocal = (s) => s ? new Date(s).getTime() : null;
 
+// ── Encerrar Missão inline (sem turno ativo) ─────────────────
+
+const EncerrarMissaoInline = ({ missao, turnos, setMissoes }) => {
+  const [open,    setOpen]    = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [form,    setForm]    = useState({ partidaDestino:"", chegadaCasa:"" });
+
+  // Sugere horários baseado no último atendimento
+  const abrirSheet = () => {
+    const ultimoTurno = [...turnos].sort((a,b) => (b.diaMissao||0)-(a.diaMissao||0))[0];
+    const fimAtend = ultimoTurno?.atendimentoFim;
+    setForm({
+      partidaDestino: fimAtend ? fmtDatetimeLocal(fimAtend) : "",
+      chegadaCasa:    "",
+    });
+    setOpen(true);
+  };
+
+  const encerrar = async (pularViagem = false) => {
+    setSaving(true);
+    const missaoFechada = {
+      ...missao,
+      partidaDestino: !pularViagem && form.partidaDestino ? new Date(form.partidaDestino).getTime() : null,
+      chegadaCasa:    !pularViagem && form.chegadaCasa    ? new Date(form.chegadaCasa).getTime()    : null,
+      status: "concluida",
+    };
+    await saveMissao(missaoFechada);
+    setMissoes(ms => ms.map(m => m.id === missaoFechada.id ? missaoFechada : m));
+    setSaving(false);
+    setOpen(false);
+  };
+
+  const tempoVolta = form.partidaDestino && form.chegadaCasa
+    ? new Date(form.chegadaCasa) - new Date(form.partidaDestino)
+    : null;
+
+  return (
+    <>
+      <button
+        onClick={e => { e.stopPropagation(); abrirSheet(); }}
+        style={{
+          marginTop:10, width:"100%", background:"rgba(160,140,96,0.07)",
+          border:"1px solid rgba(160,140,96,0.2)", borderRadius:"var(--r)",
+          padding:"10px 14px", fontFamily:"var(--font)", fontSize:12,
+          color:"var(--amber)", cursor:"pointer", display:"flex",
+          alignItems:"center", justifyContent:"center", gap:6,
+        }}>
+        <Icon d={ICONS.home} size={13} stroke={1.5} color="var(--amber)" />
+        Registrar viagem de volta e encerrar missão
+      </button>
+
+      {open && (
+        <>
+          <div className="overlay" onClick={() => setOpen(false)} />
+          <div className="sheet" style={{ maxHeight:"88vh", overflowY:"auto" }}>
+            <div className="sh-handle" />
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+              <div className="sh-title" style={{ margin:0 }}>Encerrar missão</div>
+              <span style={{ fontSize:10, color:"var(--amber)", background:"rgba(160,140,96,0.12)", borderRadius:100, padding:"3px 10px" }}>
+                ✈ {missao.cidade}
+              </span>
+            </div>
+            <div style={{ fontSize:12, color:"var(--text3)", fontWeight:300, marginBottom:20 }}>
+              {turnos.length} dia{turnos.length>1?"s":""} de atendimento registrados.
+              Informe a viagem de volta para calcular o total real da missão.
+            </div>
+
+            <div className="frow" style={{ marginBottom:16 }}>
+              <div className="fg">
+                <label className="fl">Saída do destino</label>
+                <input className="fi" type="datetime-local"
+                  value={form.partidaDestino}
+                  onChange={e => setForm(f => ({ ...f, partidaDestino: e.target.value }))} />
+              </div>
+              <div className="fg">
+                <label className="fl">
+                  Chegada em casa
+                  {tempoVolta && tempoVolta > 0 && (
+                    <span style={{ color:"var(--sage)", fontWeight:300, textTransform:"none", letterSpacing:0, marginLeft:4 }}>
+                      · {fmtDur(tempoVolta)}
+                    </span>
+                  )}
+                </label>
+                <input className="fi" type="datetime-local"
+                  value={form.chegadaCasa}
+                  onChange={e => setForm(f => ({ ...f, chegadaCasa: e.target.value }))} />
+              </div>
+            </div>
+
+            <button className="btn-p" onClick={() => encerrar(false)} disabled={saving}>
+              {saving ? "Salvando…" : "Encerrar missão"}
+            </button>
+            <button className="btn-s" onClick={() => encerrar(true)}>
+              Encerrar sem registrar volta
+            </button>
+            <button className="btn-s" onClick={() => setOpen(false)} style={{ marginTop:4 }}>
+              Cancelar
+            </button>
+          </div>
+        </>
+      )}
+    </>
+  );
+};
+
 // ── Tela Histórico ────────────────────────────────────────────
 const TelaHistorico = ({ historico, setHistorico, clinicas, missoes = [], setMissoes }) => {
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -1897,6 +2154,11 @@ const TelaHistorico = ({ historico, setHistorico, clinicas, missoes = [], setMis
           const totalFora = missao.chegadaCasa && missao.saidaCasa ? missao.chegadaCasa - missao.saidaCasa : 0;
           const prodGlobal = totalFora > 0 ? Math.round((totalLiq / totalFora) * 100) : null;
           const diaLabel = missao.noites === 0 ? "ida e volta" : `${missao.noites} noite${missao.noites>1?"s":""}`;
+          // Deslocamento: usa timestamps reais se disponíveis, senão tempoViagemH (já inclui ida+volta)
+          const idaMs   = missao.chegadaDestino && missao.saidaCasa   ? missao.chegadaDestino - missao.saidaCasa   : 0;
+          const voltaMs = missao.chegadaCasa    && missao.partidaDestino ? missao.chegadaCasa - missao.partidaDestino : 0;
+          const deslocMs = idaMs + voltaMs;
+          const deslocLabel = deslocMs > 0 ? fmtDur(deslocMs) : missao.tempoViagemH ? `${missao.tempoViagemH}h` : "—";
 
           return (
             <div key={missao.id} className="ti fu missao-group" style={{ animationDelay:`${gi*0.03}s`, borderLeft:"3px solid var(--amber)", paddingLeft:2 }}>
@@ -1923,7 +2185,7 @@ const TelaHistorico = ({ historico, setHistorico, clinicas, missoes = [], setMis
               {/* Métricas consolidadas */}
               <div className="ti-met">
                 {[
-                  { l:"Deslocamento",  v: missao.tempoViagemH ? `${missao.tempoViagemH}h` : "—" },
+                  { l:"Deslocamento",  v: deslocLabel },
                   { l:"Atendimento",   v: fmtDur(totalLiq) || "—" },
                   { l:"Total fora",    v: totalFora ? fmtDur(totalFora) : "—" },
                 ].map(({l,v}) => (
@@ -1935,6 +2197,11 @@ const TelaHistorico = ({ historico, setHistorico, clinicas, missoes = [], setMis
                 {missao.meios?.length > 0 && <span className="tag">{missao.meios.join(" + ")}</span>}
                 <span className="tag" style={{ color:"var(--amber)", background:"rgba(160,140,96,0.12)" }}>{missao.status === "concluida" ? "✓ Concluída" : "Em andamento"}</span>
               </div>
+
+              {/* Encerrar missão manualmente (quando não há turno ativo) */}
+              {missao.status !== "concluida" && (
+                <EncerrarMissaoInline missao={missao} turnos={turnos} setMissoes={setMissoes} />
+              )}
 
               {/* Dias expandidos */}
               {expanded && (
@@ -3153,6 +3420,10 @@ export default function App() {
       <style>{CSS}</style>
       <div className="app-wrap">
         <TopNav active={tab} onChange={setTab} saving={saving} pending={pendingCount} syncError={syncError} />
+
+        {turno && tab !== "turno" && (
+          <LiveWidget turno={turno} clinicas={clinicas} missoes={missoes} onGoToTurno={() => setTab("turno")} />
+        )}
 
         <div className="screen">
           {tab==="turno"       && <TelaHome turno={turno} historico={historico} missoes={missoes} onIniciar={iniciarTurno} onIniciarMissaoDia={iniciarMissaoDia} onAction={registrarAcao} onPausa={pausarAtendimento} onRetomar={retomarAtendimento} onEncerrar={()=>setShowEncerrar(true)} onEncerrarDia={encerrarDia} saving={saving} clinicas={clinicas} />}
