@@ -2474,7 +2474,8 @@ const TelaClinicas = ({ historico, clinicas, setClinicas }) => {
   const comDados = clinicas.map(c => {
     const ts = historico.filter(t => t.clinicaId===c.id);
     if (!ts.length) return { c, ts, avgIda:0, avgProd:null, avgDg:null, sustent:null };
-    const avgIda  = ts.filter(t=>t.chegadaClinica).length ? ts.filter(t=>t.chegadaClinica).reduce((a,t)=>a+(t.chegadaClinica-t.saidaCasa),0)/ts.filter(t=>t.chegadaClinica).length : 0;
+    const tsComIda = ts.filter(t=>t.chegadaClinica && t.saidaCasa && t.chegadaClinica > t.saidaCasa);
+    const avgIda  = tsComIda.length ? tsComIda.reduce((a,t)=>a+(t.chegadaClinica-t.saidaCasa),0)/tsComIda.length : 0;
     const prods   = ts.filter(t=>calcProd(t)!==null);
     const avgProd = prods.length ? Math.round(prods.reduce((a,t)=>a+calcProd(t),0)/prods.length) : null;
     const avgDg   = ts.reduce((a,t)=>a+calcDesgasteVal(t),0)/ts.length;
