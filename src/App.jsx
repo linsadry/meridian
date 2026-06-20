@@ -102,11 +102,26 @@ const loadCalcHist = () => {
 const saveCalcHist = (h) => { try { localStorage.setItem("meridian_calc_v1", JSON.stringify(h.slice(0,30))); } catch {} };
 
 const calcProd = (t) => {
-  if (!t.atendimentoInicio || !t.atendimentoFim || !t.saidaCasa || !t.chegadaCasa) return null;
+  if (!t.atendimentoInicio || !t.atendimentoFim) return null;
   const atendBruto = t.atendimentoFim - t.atendimentoInicio;
   const pausaMs = calcTotalPausa(t.pausas || []);
   const atendLiq = Math.max(0, atendBruto - pausaMs);
-  return Math.round((atendLiq / (t.chegadaCasa - t.saidaCasa)) * 100);
+  // Base de tempo: usa saidaCasa→chegadaCasa se disponível; senão atendimento como proxy
+  const base = (t.saidaCasa && t.chegadaCasa && t.chegadaCasa > t.saidaCasa)
+    ? t.chegadaCasa - t.saidaCasa
+    : atendBruto; // turnos de dia intermediário de missão: 100% do tempo é atendimento
+  if (base <= 0) return null;
+  return Math.round((atendLiq / base) * 100);
+};
+
+// Tempo efetivo fora de casa para um turno (considera missão sem saidaCasa)
+const calcTempoFora = (t) => {
+  if (t.chegadaCasa && t.saidaCasa && t.chegadaCasa > t.saidaCasa)
+    return t.chegadaCasa - t.saidaCasa;
+  // Turno de missão sem deslocamento: usa atendimento + margem estimada
+  if (t.atendimentoInicio && t.atendimentoFim)
+    return t.atendimentoFim - t.atendimentoInicio;
+  return 0;
 };
 
 // Total de ms em pausas concluídas
@@ -2325,7 +2340,7 @@ const TelaAnalytics = ({ historico, clinicas }) => {
   const byC = clinicas.map(c => {
     const ct = ts.filter(t => t.clinicaId===c.id);
     if (!ct.length) return null;
-    const totalFora = ct.reduce((a,t)=>a+(t.chegadaCasa&&t.saidaCasa&&t.chegadaCasa>t.saidaCasa?t.chegadaCasa-t.saidaCasa:0),0);
+    const totalFora = ct.reduce((a,t)=>a+calcTempoFora(t),0);
     const avgDg  = ct.reduce((a,t)=>a+calcDesgasteVal(t),0)/ct.length;
     const prods  = ct.filter(t=>calcProd(t)!==null);
     const avgProd = prods.length ? Math.round(prods.reduce((a,t)=>a+calcProd(t),0)/prods.length) : null;
@@ -2479,7 +2494,10 @@ const TelaClinicas = ({ historico, clinicas, setClinicas }) => {
     const prods   = ts.filter(t=>calcProd(t)!==null);
     const avgProd = prods.length ? Math.round(prods.reduce((a,t)=>a+calcProd(t),0)/prods.length) : null;
     const avgDg   = ts.reduce((a,t)=>a+calcDesgasteVal(t),0)/ts.length;
-    const sustent = avgProd!==null ? Math.min(100,Math.max(0,Math.round((avgProd/100)*55+((5-avgDg)/5)*45))) : null;
+    // Sustentabilidade: se há prod, pondera prod+desgaste; senão usa só desgaste
+    const sustent = avgProd!==null
+      ? Math.min(100,Math.max(0,Math.round((avgProd/100)*55+((5-avgDg)/5)*45)))
+      : Math.min(100,Math.max(0,Math.round(((5-avgDg)/5)*100)));
     return { c, ts, avgIda, avgProd, avgDg, sustent };
   }).sort((a,b) => b.ts.length - a.ts.length);
 
