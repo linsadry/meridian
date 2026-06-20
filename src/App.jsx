@@ -2257,9 +2257,11 @@ const TelaHistorico = ({ historico, setHistorico, clinicas, missoes = [], setMis
         const t = grupo.turno;
         const i = gi;
         const c   = getClinicaById(t.clinicaId, clinicas);
-        const ida  = t.chegadaClinica ? t.chegadaClinica - t.saidaCasa : null;
+        const ida   = t.chegadaClinica && t.saidaCasa ? t.chegadaClinica - t.saidaCasa : null;
+        const volta = t.chegadaCasa && t.atendimentoFim ? t.chegadaCasa - t.atendimentoFim : null;
+        const desl  = (ida || 0) + (volta || 0) || null;
         const atend = t.atendimentoFim&&t.atendimentoInicio ? t.atendimentoFim-t.atendimentoInicio : null;
-        const total = t.chegadaCasa ? t.chegadaCasa - t.saidaCasa : null;
+        const total = t.chegadaCasa && t.saidaCasa ? t.chegadaCasa - t.saidaCasa : null;
         const prod  = calcProd(t);
         const dg    = calcDesgasteVal(t);
         const dgI   = getDesgasteInfo(dg);
@@ -2290,7 +2292,7 @@ const TelaHistorico = ({ historico, setHistorico, clinicas, missoes = [], setMis
               </div>
             </div>
             <div className="ti-met">
-              {[{l:"Deslocamento",v:fmtDur(ida)},{l:"Atendimento",v:fmtDur(atend)},{l:"Total fora",v:fmtDur(total)}].map(({l,v}) => (
+              {[{l:"Deslocamento",v:fmtDur(desl)},{l:"Atendimento",v:fmtDur(atend)},{l:"Total fora",v:fmtDur(total)}].map(({l,v}) => (
                 <div key={l} className="ti-m"><div className="ti-mv">{v}</div><div className="ti-ml">{l}</div></div>
               ))}
             </div>
