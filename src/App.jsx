@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { loadTurnos, saveTurno, deleteTurno, saveCalculo, loadCalculos, loadClinicas as loadClinicasDB, saveClinica, deleteClinica, seedClinicas, loadMissoes, saveMissao, deleteMissao, flushPending, getPendingCount } from "./lib/db";
+import { supabase, isOnline } from "./lib/supabase";
 
 // ─── ICONS ───────────────────────────────────────────────────────────────────
 
@@ -767,7 +768,73 @@ const SyncBadge = ({ saving, pending = 0, syncError = false }) => (
 
 // ── Top Nav ───────────────────────────────────────────────────
 
-const TopNav = ({ active, onChange, saving, pending = 0, syncError = false }) => {
+// ── Login ─────────────────────────────────────────────────────
+
+const LoginScreen = () => {
+  const [email, setEmail]       = useState("");
+  const [senha, setSenha]       = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [erro, setErro]         = useState("");
+
+  const entrar = async (e) => {
+    e.preventDefault();
+    if (!email || !senha) return;
+    setLoading(true);
+    setErro("");
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha });
+    setLoading(false);
+    if (error) {
+      setErro(error.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : error.message);
+    }
+    // Sucesso: onAuthStateChange no App() atualiza a sessão automaticamente.
+  };
+
+  return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100dvh", padding:24 }}>
+      <form onSubmit={entrar} style={{ width:"100%", maxWidth:340, display:"flex", flexDirection:"column", gap:18 }}>
+        <div style={{ textAlign:"center", marginBottom:8 }}>
+          <div style={{ fontFamily:"var(--font-d)", fontSize:28, color:"var(--text)", fontStyle:"italic" }}>meridian</div>
+          <div style={{ fontSize:12, color:"var(--text3)", marginTop:6 }}>Entre para ver seus turnos</div>
+        </div>
+
+        <div>
+          <input
+            className="fi"
+            type="email"
+            autoComplete="username"
+            placeholder="E-mail"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            style={{ width:"100%" }}
+          />
+        </div>
+        <div>
+          <input
+            className="fi"
+            type="password"
+            autoComplete="current-password"
+            placeholder="Senha"
+            value={senha}
+            onChange={e => setSenha(e.target.value)}
+            style={{ width:"100%" }}
+          />
+        </div>
+
+        {erro && (
+          <div style={{ fontSize:12, color:"var(--wine)", background:"var(--wine2)", borderRadius:"var(--r-sm)", padding:"8px 12px" }}>
+            {erro}
+          </div>
+        )}
+
+        <button className="btn-p" type="submit" disabled={loading || !email || !senha}>
+          {loading ? "Entrando…" : "Entrar"}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+const TopNav = ({ active, onChange, saving, pending = 0, syncError = false, onLogout }) => {
   const tabs = [
     { id:"turno",      icon:"timer",      label:"Turno" },
     { id:"historico",  icon:"history",    label:"Histórico" },
@@ -790,6 +857,16 @@ const TopNav = ({ active, onChange, saving, pending = 0, syncError = false }) =>
           ))}
         </div>
         <SyncBadge saving={saving} pending={pending} syncError={syncError} />
+        {onLogout && (
+          <button
+            className="btn-icon"
+            title="Sair"
+            onClick={onLogout}
+            style={{ marginLeft:8, color:"var(--text3)" }}
+          >
+            <Icon d={["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4","M16 17l5-5-5-5","M21 12H9"]} size={16} stroke={1.5} />
+          </button>
+        )}
       </div>
     </nav>
   );
@@ -3178,6 +3255,8 @@ const restoreTurnoAtivo = () => {
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [session,      setSession]     = useState(null);
+  const [authChecked,  setAuthChecked] = useState(false);
   const [tab,          setTab]         = useState("turno");
   const [turno,        setTurno]       = useState(null);
   const [showEncerrar, setShowEncerrar] = useState(false);
@@ -3191,7 +3270,28 @@ export default function App() {
   const [pendingCount, setPendingCount] = useState(0);
   const [syncError,    setSyncError]   = useState(false);
 
+  // Autenticação — se não houver Supabase configurado, segue direto (modo offline)
   useEffect(() => {
+    if (!isOnline()) { setAuthChecked(true); return; }
+
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthChecked(true);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const logout = useCallback(async () => {
+    if (supabase) await supabase.auth.signOut();
+  }, []);
+
+  useEffect(() => {
+    if (isOnline() && !session) return; // não carrega dados sem sessão
     const init = async () => {
       // 1. Restaurar turno ativo salvo localmente
       const turnoSalvo = restoreTurnoAtivo();
@@ -3253,7 +3353,7 @@ export default function App() {
       setSyncError(falhas > 0);
     };
     init();
-  }, []);
+  }, [session]);
 
   // Wrapper: atualiza estado + persiste localStorage + salva Supabase
   const setTurnoComPersistencia = useCallback((t) => {
@@ -3427,6 +3527,22 @@ export default function App() {
     saveClinicas(cs);
   };
 
+  if (!authChecked) return (
+    <>
+      <style>{CSS}</style>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100dvh", flexDirection:"column", gap:16 }}>
+        <div style={{ fontFamily:"var(--font-d)", fontSize:22, color:"var(--text2)", fontStyle:"italic" }}>meridian</div>
+      </div>
+    </>
+  );
+
+  if (isOnline() && !session) return (
+    <>
+      <style>{CSS}</style>
+      <LoginScreen />
+    </>
+  );
+
   if (loading) return (
     <>
       <style>{CSS}</style>
@@ -3440,7 +3556,7 @@ export default function App() {
     <>
       <style>{CSS}</style>
       <div className="app-wrap">
-        <TopNav active={tab} onChange={setTab} saving={saving} pending={pendingCount} syncError={syncError} />
+        <TopNav active={tab} onChange={setTab} saving={saving} pending={pendingCount} syncError={syncError} onLogout={logout} />
 
         {turno && tab !== "turno" && (
           <LiveWidget turno={turno} clinicas={clinicas} missoes={missoes} onGoToTurno={() => setTab("turno")} />
